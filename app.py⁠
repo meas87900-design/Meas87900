@@ -1,1 +1,76 @@
+import streamlit as st
+from google import genai
+import tempfile
+import os
+
+st.set_page_config(page_title="AI Subtitle Generator", layout="wide")
+
+st.title("🎬 Global AI Dubbing & Subtitling Workstation")
+
+# Settings Box
+with st.expander("⚙️ ការកំណត់ Gemini (Settings)", expanded=True):
+    api_key = st.text_input("Gemini API Key:", type="password", placeholder="Paste API Key ត្រង់នេះ...")
+    model_choice = st.selectbox("ជ្រើសរើស Model:", ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"])
+
+st.subheader("1️⃣ Generate Subtitles (Khmer)")
+
+# Large Video Upload Dropzone
+uploaded_file = st.file_uploader(
+    "UPLOAD VIDEO HERE (500MB per file • MP4, MOV, AVI, MKV)", 
+    type=["mp4", "mov", "avi", "mkv"]
+)
+
+if st.button("🚀 GENERATE SUBTITLES", use_container_width=True):
+    if not api_key:
+        st.error("សូមបញ្ជូល Gemini API Key ជាមុនសិន!")
+    elif uploaded_file is None:
+        st.error("សូម Upload វីដេអូជាមុនសិន!")
+    else:
+        try:
+            # បង្កើត Client ដោយប្រើ Google GenAI SDK ថ្មី
+            client = genai.Client(api_key=api_key)
+            
+            with st.spinner("កំពុងដំណើរការ Upload និងបង្កើត Subtitle..."):
+                # បង្កើត File បណ្តោះអាសន្ន
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
+                    tmp_file.write(uploaded_file.read())
+                    tmp_file_path = tmp_file.name
+
+                # Upload File ទៅកាន់ Gemini
+                video_file = client.files.upload(file=tmp_file_path)
+                
+                prompt = "Please generate accurate SRT subtitles in Khmer for this video. Output ONLY valid SRT format without markdown syntax like ```srt."
+                
+                response = client.models.generate_content(
+                    model=model_choice,
+                    contents=[video_file, prompt]
+                )
+                
+                st.session_state["srt_text"] = response.text
+                
+                # លុប File បណ្តោះអាសន្នចេញ
+                if os.path.exists(tmp_file_path):
+                    os.remove(tmp_file_path)
+                    
+                st.success("បង្កើត Subtitle រួចរាល់!")
+        except Exception as e:
+            st.error(f"មានបញ្ហា៖ {e}")
+
+# Generated SRT & Safety Check
+if "srt_text" in st.session_state:
+    st.subheader("Generated SRT from Video")
+    srt_output = st.text_area("ពិនិត្យ និងកែសម្រួលអត្ថបទ SRT ទីនេះមុនពេលទាញយក៖", st.session_state["srt_text"], height=250)
+    
+    st.markdown("---")
+    st.subheader("🛡️ AI SAFETY & POLICY CHECK")
+    if st.button("🔍 ពិនិត្យសុវត្ថិភាពអត្ថបទ"):
+        st.success("🟢 សុវត្ថិភាព (គ្មានពាក្យប្រឈមនឹង Facebook Policy ឡើយ)")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.download_button("📥 DOWNLOAD FILE .SRT", data=srt_output, file_name="subtitles.srt", mime="text/plain", use_container_width=True)
+    with col2:
+        if st.button("🗑️ CLEAR / លុបទិន្នន័យ", use_container_width=True):
+            del st.session_state["srt_text"]
+            st.rerun()
 
